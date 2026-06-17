@@ -62,12 +62,16 @@
 
             // Paket payload'unu hazırlıyoruz
             const payload = {
-                w: keyState.w,
-                a: keyState.a,
-                s: keyState.s,
-                d: keyState.d,
-                space: keyState.space,
-                leftClick: keyState.leftClick
+                keys: {
+                    w: keyState.w,
+                    a: keyState.a,
+                    s: keyState.s,
+                    d: keyState.d
+                },
+                actions: {
+                    space: keyState.space,
+                    leftClick: keyState.leftClick
+                }
             };
 
             // Tek bir kez stringify yaparak performansı koruyoruz

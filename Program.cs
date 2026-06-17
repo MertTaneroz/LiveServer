@@ -3,14 +3,15 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
+using Testbackend.Models;
 
 var builder =
     WebApplication.CreateBuilder(
         args
     );
 
-var app =
-    builder.Build();
+var app = builder.Build();
 
 app.UseDefaultFiles();
 
@@ -18,6 +19,9 @@ app.UseStaticFiles();
 
 app.UseWebSockets();
 
+bool spacePressed = false;
+
+InputPayload input = new();
 
 // Oyun dünyasýnýn durumu
 float posX = 0f;
@@ -27,9 +31,10 @@ float posY = 0f;
 float hareketHizi = 1f;
 // Son gelen WASD input'u burada tutulur
 // Oyuncu W basýlýysa burada kalýr
-Keys currentKeys =
+InputPayload currentKeys =
     new();
 
+ConcurrentQueue<Actions> actionQueue = new();
 
 // Son tick'in ne zaman çalýþtýðýný tutuyor
 // Ýlk deðer: sunucu açýldýðý an
@@ -62,81 +67,47 @@ async context =>
                 .AcceptWebSocketAsync();
 
 
-        while (
-            socket.State
-            ==
-            System.Net.WebSockets
-                .WebSocketState
-                .Open
-        )
+        while (socket.State == System.Net.WebSockets.WebSocketState.Open)
         {
-            // Gelen veri burada tutulacak
-            byte[] buffer =
-                new byte[1024];
+            
 
+            byte[] buffer = new byte[1024];
 
-
-            // Veri alma iþlemini BAÞLAT
-            // Ama burada bekleme
-            var receiveTask =
-                socket.ReceiveAsync(
-                    buffer,
-                    CancellationToken.None
-                );
-
-
-            /*
-             receiveTask:
-             "birisi veri gönderirse oku"
-
-             Task.Delay(30):
-             "30 ms bekle"
-
-             WhenAny:
-             "hangisi önce biterse devam et"
-
-             Amaç:
-             input gelmese bile
-             tick durmasýn
-            */
-
-            await Task.WhenAny(
-                receiveTask,
-                Task.Delay(5)
+            var receiveTask = socket.ReceiveAsync(
+                buffer,
+                CancellationToken.None
             );
 
+            var delayTask = Task.Delay(5);
 
+            var completedTask = await Task.WhenAny(receiveTask, delayTask);
 
-            /*
-             Eðer veri geldiyse
-             input'u iþle
-            */
-
-            if (
-                receiveTask
-                    .IsCompleted
-            )
+            if (completedTask == receiveTask)
             {
-                var result =
-                    receiveTask
-                        .Result;
+                var result = await receiveTask;
 
+                if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
+                {
+                    await socket.CloseAsync(
+                        System.Net.WebSockets.WebSocketCloseStatus.NormalClosure,
+                        "Closing",
+                        CancellationToken.None
+                    );
+                    break;
+                }
 
-                string message =
-                    Encoding
-                        .UTF8
-                        .GetString(
-                            buffer,
-                            0,
-                            result.Count
-                        );
+                string message = Encoding.UTF8.GetString(
+                    buffer,
+                    0,
+                    result.Count
+                );
                 //
                 try
                 {
-                    Keys? data =
+                    InputPayload? data =
                         JsonSerializer
                             .Deserialize
-                            <Keys>(
+                            <InputPayload>(
                                 message
                             );
 
@@ -156,17 +127,38 @@ async context =>
                         currentKeys =
                             data;
                     }
+
+                    if (data?.actions is not null)
+                    {
+                        actionQueue.Enqueue(data.actions);
+                    }
+
+
+
+                    while (actionQueue.TryDequeue(out var a))
+                    {
+                        if (a.space)
+                        {
+                            spacePressed = true;
+                        }
+                    }
+
                 }
                 catch
                 {
                 }
             }
             // Deðerleri bir Tuple (demet) içine koyup desen eþleþtirme yapýyoruz
-            int hareketYonKontrol = new[] { currentKeys.w, currentKeys.a, currentKeys.s, currentKeys.d }.Count(x => x);
+            int hareketYonKontrol = new[]
+                {
+                    currentKeys?.keys?.w ?? false,
+                    currentKeys?.keys?.a ?? false,
+                    currentKeys?.keys?.s ?? false,
+                    currentKeys?.keys?.d ?? false
+                }
+                .Count(x => x);
 
-            int spaceKontrol = new[] { currentKeys.space }.Count(x => x);
 
-            int mausKontrol = new[] { currentKeys.leftClick }.Count(x => x);
 
             //Console.WriteLine($"{spaceKontrol}  {mausKontrol}");
             // Switch kontrolünü bu sayý üzerinden yapýyoruz
@@ -193,66 +185,58 @@ async context =>
                 /*
                  Burada gerçek oyun çalýþýyor
                 */
+               
 
                 if (hareketYonKontrol == 2)
                 {
 
 
-                    if (
-                        currentKeys.w
-                    )
+                    if (currentKeys?.keys?.w ?? false)
                     {
-                        posY = posY + (hareketHizi * 0.71f);
+                        posY += hareketHizi * 0.71f;
                     }
 
-                    if (
-                        currentKeys.a
-                    )
+                    if (currentKeys?.keys?.a ?? false)
                     {
-                        posX = posX - (hareketHizi * 0.71f);
+                        posX -= hareketHizi * 0.71f;
                     }
 
-                    if (
-                        currentKeys.s
-                    )
+                    if (currentKeys?.keys?.s ?? false)
                     {
-                        posY = posY - (hareketHizi * 0.71f);
+                        posY -= hareketHizi * 0.71f;
                     }
 
-                    if (
-                        currentKeys.d
-                    )
+                    if (currentKeys?.keys?.d ?? false)
                     {
-                        posX = posX + (hareketHizi * 0.71f);
+                        posX += hareketHizi * 0.71f;
                     }
-
 
                 }
                 else
                 {
                     if (
-                        currentKeys.w
+                        currentKeys?.keys?.w ?? false
                        )
                     {
                         posY = posY + (hareketHizi);
                     }
 
                     if (
-                        currentKeys.a
+                        currentKeys?.keys?.a ?? false
                     )
                     {
                         posX = posX - (hareketHizi);
                     }
 
                     if (
-                        currentKeys.s
+                        currentKeys?.keys?.s ?? false
                     )
                     {
                         posY = posY - (hareketHizi);
                     }
 
                     if (
-                        currentKeys.d
+                        currentKeys?.keys?.d ?? false
                     )
                     {
                         posX = posX + (hareketHizi);
@@ -263,9 +247,11 @@ async context =>
                         new
                         {
                             x = posX,
-                            y = posY
+                            y = posY,
+                            space = spacePressed
                         };
 
+                Console.WriteLine(response);
 
                 string json =
                     JsonSerializer
@@ -305,6 +291,7 @@ async context =>
 
                  sonraki tick buradan ölçülecek
                 */
+                spacePressed = false;
 
                 lastTick =
                     DateTime.UtcNow;
@@ -317,41 +304,22 @@ app.Run();
 
 
 
-class Keys
+public class InputPayload
 {
-    public bool w
-    {
-        get;
-        set;
-    }
+    public Keys? keys { get; set; }
+    public Actions? actions { get; set; }
+}
 
-    public bool a
-    {
-        get;
-        set;
-    }
+public class Keys
+{
+    public bool w { get; set; }
+    public bool a { get; set; }
+    public bool s { get; set; }
+    public bool d { get; set; }
+}
 
-    public bool s
-    {
-        get;
-        set;
-    }
-
-    public bool d
-    {
-        get;
-        set;
-    }
-
-    public bool space
-    {
-        get;
-        set;
-    }
-
-    public bool leftClick
-    {
-        get;
-        set;
-    }
+public class Actions
+{
+    public bool space { get; set; }
+    public bool leftClick { get; set; }
 }
