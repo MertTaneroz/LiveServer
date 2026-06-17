@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Unity WebSocket Input Simulator</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+        }
+
+        #output {
+            color: #333;
+            background: #eee;
+            padding: 10px;
+            inline-size: max-content;
+        }
+    </style>
+</head>
+<body>
+
+    <h1 id="output">Bağlantı bekleniyor...</h1>
+
+    <script>
+    const output = document.getElementById("output");
+        const socket = new WebSocket("ws://localhost:5170/ws");
+
+        // 1. Girdi Yönetimi: Tuşları küçük harfle tanımlıyoruz (Standart browser çıktısı)
+        const keyState = {
+            w: false,
+            a: false,
+            s: false,
+            d: false,
+            space: false,
+            leftClick: false
+        };
+
+        // WebSocket Etkinlikleri
+        socket.onopen = () => {
+            console.log("WebSocket bağlantısı kuruldu.");
+            // socket.send("INIT");
+        };
+
+
+        socket.onerror = (error) => {
+            console.error("WebSocket Hatası: ", error);
+        };
+
+        socket.onmessage = (e) => {
+            const pos =
+                JSON.parse(
+                    e.data
+                );
+
+
+            output.innerText = event.data;
+        };
+
+        // 2. Periyodik Gönderim Fonksiyonu (Tick Rate: ~33 FPS)
+        function sendKeyState() {
+            if (socket.readyState !== WebSocket.OPEN) return;
+
+            // Paket payload'unu hazırlıyoruz
+            const payload = {
+                w: keyState.w,
+                a: keyState.a,
+                s: keyState.s,
+                d: keyState.d,
+                space: keyState.space,
+                leftClick: keyState.leftClick
+            };
+
+            // Tek bir kez stringify yaparak performansı koruyoruz
+            const jsonString = JSON.stringify(payload);
+
+            socket.send(jsonString);
+
+            // NOT: State sıfırlama işlemi burada YAPILMAZ.
+            // Tuşun bırakıldığını tarayıcının keyup eventi belirlemelidir.
+        }
+
+        // 3. Etkinlik Dinleyicileri (Event Listeners)
+        window.addEventListener('keydown', (event) => {
+            // Kullanıcının Shift tuşuna basarak büyük yazma ihtimaline karşı küçük harfe çeviriyoruz
+            let key = event.key.toLowerCase();
+
+            if (key === " ") {
+                key = "space";
+            }
+
+            if (key in keyState) {
+                event.preventDefault(); // Sayfa kaymalarını engellemek için
+
+                // Tuşa basılı tutulduğunda (repeat) gereksiz tetiklemeyi önlemek için sadece false ise true yapıyoruz
+                if (!keyState[key]) {
+                    keyState[key] = true;
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (event) => {
+            let key = event.key.toLowerCase();
+
+            if (key === " ") {
+                key = "space";
+            }
+
+            if (key in keyState) {
+                keyState[key] = false; // Kullanıcı parmağını çektiği an state temizlenir
+            }
+        });
+
+        window.addEventListener('mousedown', (event) => {
+            // event.button === 0 kesinlikle sol tık demektir
+            if (event.button === 0) {
+                keyState.leftClick = true;
+            }
+        });
+
+        // Fare sol tıkı bırakıldığında
+        window.addEventListener('mouseup', (event) => {
+            if (event.button === 0) {
+                keyState.leftClick = false;
+            }
+        });
+
+        // Oyuncu döngüsünü başlat (30 milisaniyede bir sunucuya anlık durumu raporla)
+        setInterval(sendKeyState, 5);</script>
+
+</body>
+</html>
