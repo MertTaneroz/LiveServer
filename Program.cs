@@ -130,7 +130,7 @@ async context =>
                             0,
                             result.Count
                         );
-
+                //
                 try
                 {
                     Keys? data =
@@ -168,7 +168,7 @@ async context =>
 
             int mausKontrol = new[] { currentKeys.leftClick }.Count(x => x);
 
-            Console.WriteLine($"{spaceKontrol}  {mausKontrol}");
+            //Console.WriteLine($"{spaceKontrol}  {mausKontrol}");
             // Switch kontrolünü bu sayý üzerinden yapýyoruz
 
 
